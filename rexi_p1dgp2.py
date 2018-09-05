@@ -1,5 +1,11 @@
 from firedrake import *
 
+from rexi_coefficients import RexiCoefficients
+
+h = 0.2
+M = 32
+alpha, beta = RexiCoefficients(h, M, 0, reduce_to_half=True)
+
 n = 20
 ensemble = Ensemble(COMM_WORLD, 2)
 
