@@ -1,7 +1,9 @@
 from firedrake import *
 
 n = 20
-mesh = UnitSquareMesh(n,n)
+ensemble = Ensemble(COMM_WORLD, 2)
+
+mesh = UnitSquareMesh(20, 20, comm=ensemble.comm)
 
 #we are using P1dg-P2 for the time being, it's not what we want but is what
 #currently works with complex-valued fields
@@ -27,30 +29,35 @@ beta = Constant(1)
 # then assemble (u_1,h_1) = sum_i b_i (v_i, q_i)
 
 # elimination of v_i,
-# (a_i*I + f*dt*R)v_i = u_0 - dt*g*grad(h)
-# v_i = -dt*(a_i*I +f*dt*R)^{-1}g*grad(h) + (a_i*I + f*dt*R)^{-1}u_0.
+# (a_i*I - f*dt*R)v_i = u_0 + dt*g*grad(h)
+# v_i = dt*(a_i*I  - f*dt*R)^{-1}g*grad(h) + (a_i*I - f*dt*R)^{-1}u_0.
 
-# (a_i*I + dt*f*R)^{-1} = (a_i -dt*f)^{-1} = 1/(a_i**2 + dt**2*f**2)*(a_i   dt*f)
-#                         (dt*f  a_i)                                (-dt*f  a_i)
+# (a_i*I - dt*f*R)^{-1} = (a_i   dt*f)^{-1} = 1/(a_i**2 + dt**2*f**2)*(a_i   -dt*f)
+#                         (-dt*f  a_i)                                (dt*f    a_i)
 
-# a_i*q - dt**2*g*H*div((a_i*I +dt*f*R)^{-1}g*grad(h)) = h_0 - dt*H*div(a_i*I + dt*f*R)^{-1}u_0
+# a_i*q - dt**2*g*H*div((a_i*I - dt*f*R)^{-1}g*grad(h)) = h_0 + dt*H*div(a_i*I - dt*f*R)^{-1}u_0
 
-aiIpRinv = TensorConstant([[alpha,dt*f],[-dt*f,alpha]])/(dt**2*f**2+alpha**2)
+aiIpRinv = as_matrix([[alpha,-dt*f],[dt*f,alpha]])/(dt**2*f**2+alpha**2)
+
 
 x, y = SpatialCoordinate(mesh)
 u0 = Function(V)
 h0 = Function(Q).interpolate(cos(2*pi*x))
 
-m1 = Function(V)
+u1 = Function(V)
 h1 = Function(Q)
+
+u1T = Function(V)
+h1T = Function(Q)
 
 q = TrialFunction(Q)
 p = TestFunction(Q)
 
-ah = a_i*inner(q,p)*dx + dt**2*g*H*inner(aiIpRinv*grad(q), grad(p))*dx
-Lh = inner(h0,p)*dx + dt*H*inner(aiIpRinv*grad(q), u0)*dx
+ah = alpha*inner(q,p)*dx + dt**2*g*H*inner(aiIpRinv*grad(q), grad(p))*dx
+Lh = inner(h0,p)*dx + dt*H*inner(u0, aiIpRinv*grad(p))*dx
 
 hparams = {'ksp_type':'gmres',
+           'ksp_monitor':True,
            'pc_type':'bjacobi',
            'sub_pc_type':'ilu'}
 
@@ -61,11 +68,12 @@ v = TrialFunction(V)
 w = TestFunction(V)
 
 uparams = {'ksp_type':'gmres',
+           'ksp_monitor':True,
            'pc_type':'bjacobi',
            'sub_pc_type':'ilu'}
 
-au = inner(w,a_i*v + dt*f*perp(v))*dx
-Lu = inner(w,u0)*dx - dt*g*inner(w,grad(h1))*dx
+au = inner(alpha*v - dt*f*perp(v), w)*dx
+Lu = inner(u0, w)*dx - dt*g*inner(grad(h1), w)*dx
 
 uProblem = LinearVariationalProblem(au, Lu, u1)
 uSolver = LinearVariationalSolver(uProblem, solver_parameters=uparams)
@@ -77,5 +85,7 @@ for step in range(nsteps):
     uSolver.solve()
     u1 *= beta
     h1 *= beta
-    u0.assign(u1)
-    h0.assign(h1)
+    ensemble.allreduce(u1, u1T)
+    ensemble.allreduce(h1, h1T)
+    u0.assign(u1T)
+    h0.assign(h1T)
