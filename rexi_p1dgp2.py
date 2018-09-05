@@ -14,8 +14,8 @@ dt = Constant(1.0)
 g = Constant(1.0)
 f = Constant(1.0)
 H = Constant(1.0)
-#alpha = Constant(1+1j)
 alpha = Constant(1)
+beta = Constant(1)
 
 # L(u) = -f*perp(u) - g grad h
 #  (h) = - H*div(u)
@@ -75,5 +75,7 @@ nsteps = 10
 for step in range(nsteps):
     hSolver.solve()
     uSolver.solve()
+    u1 *= beta
+    h1 *= beta
     u0.assign(u1)
     h0.assign(h1)
