@@ -1,8 +1,8 @@
 from firedrake import *
 
-ai = Constant(1.0 + 100j)
+ai = Constant(1.0 + 1j)
 
-f = Constant(1.e-4)  # Coriolis parameter
+f = Constant(1.0e-4)  # Coriolis parameter
 g = Constant(9.8)  # Gravitational constant
 H = Constant(1000.)  # Mean depth
 tau = Constant(10.)
@@ -55,7 +55,7 @@ f1 = sin(2*math.pi*x)*sin(2*math.pi*y)*exp(-10*(x**2 + y**2))
 F = inner(f1,phi)*dx
 
 params = {
-    "ksp_type": "gmres",
+    "ksp_type": "fgmres",
     "ksp_monitor": True,
     "ksp_rtol": 1e-8,
     "pc_type": "fieldsplit",
@@ -63,11 +63,13 @@ params = {
     "pc_fieldsplit_schur_fact_type": "full",
     "fieldsplit_0_ksp_type": "preonly",
     "fieldsplit_0_pc_type": "lu",
-    "fieldsplit_1_ksp_type": "preonly",
+    "fieldsplit_1_ksp_type": "gmres",
     "fieldsplit_1_pc_type": "python",
     "fieldsplit_1_pc_python_type": "__main__.Helm",
-    "fieldsplit_1_schur_pc_type":"lu",
-    "fieldsplit_1_ksp_converged_reason": True,
+    "fieldsplit_1_schur_pc_type":"ilu",
+    "fieldsplit_1_ksp_atol":1.0e-6,
+    "fieldsplit_1_ksp_monitor": True,
+    "fieldsplit_0_ksp_converged_reason": True,
     "ksp_converged_reason": True
 }
 
