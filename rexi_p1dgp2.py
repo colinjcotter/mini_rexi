@@ -4,7 +4,7 @@ from rexi_coefficients import RexiCoefficients
 
 h = 0.2
 M = 32
-alpha, beta = RexiCoefficients(h, M, 0, reduce_to_half=True)
+alphas, betas = RexiCoefficients(h, M, 0, reduce_to_half=True)
 
 n = 20
 ensemble = Ensemble(COMM_WORLD, 2)
@@ -18,12 +18,12 @@ V = VectorFunctionSpace(mesh,"DG",1)
 Q = FunctionSpace(mesh, "CG", 2)
 
 perp = lambda u: as_vector([-u[1], u[0]])
-dt = Constant(1.0)
+dt = Constant(0.01)
 g = Constant(1.0)
 f = Constant(1.0)
 H = Constant(1.0)
-alpha = Constant(1)
-beta = Constant(1)
+alpha = Constant(alphas[ensemble.ensemble_comm.rank])
+beta = Constant(betas[ensemble.ensemble_comm.rank])
 
 # L(u) = -f*perp(u) - g grad h
 #  (h) = - H*div(u)
