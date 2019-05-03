@@ -55,9 +55,16 @@ params = {
     "fieldsplit_0_ksp_type": "preonly",
     "fieldsplit_0_pc_type": "bjacobi",
     "fieldsplit_0_pc_sub_type": "ilu",
+    "fieldsplit_1_pc_type": "python",
+    "fieldsplit_1_pc_python_type": "firedrake.PatchPC",
     "fieldsplit_1_ksp_type": "preonly",
-    "fieldsplit_1_pc_type": "lu",
-    "fieldsplit_1_pc_factor_mat_solver_type": "mumps",
+    "fieldsplit_1_patch_pc_patch_save_operators": True,
+    "fieldsplit_1_patch_pc_patch_partition_of_unity": False,
+    "fieldsplit_1_patch_pc_patch_construct_type": "star",
+    "fieldsplit_1_patch_pc_patch_construct_dim": 0,
+    "fieldsplit_1_patch_pc_patch_sub_mat_type": "seqdense",
+    "fieldsplit_1_patch_sub_ksp_type": "preonly",
+    "fieldsplit_1_patch_sub_pc_type": "lu",
     "ksp_monitor": True
 }
 
