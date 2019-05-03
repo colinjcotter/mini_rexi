@@ -95,8 +95,8 @@ w = Function(W)
 Prob = LinearVariationalProblem(a, F, w)
 Solver = LinearVariationalSolver(Prob, solver_parameters=mg_params)
 
-transfer = EmbeddedDGTransfer(V1.ufl_element(), use_fortin_interpolation=True)
-Solver.set_transfer_operators(dmhooks.transfer_operators(V1,
+transfer = EmbeddedDGTransfer(W.ufl_element(), use_fortin_interpolation=True)
+Solver.set_transfer_operators(dmhooks.transfer_operators(W,
                                                          prolong=transfer.prolong,
                                                          inject=transfer.inject,
                                                          restrict=transfer.restrict))
