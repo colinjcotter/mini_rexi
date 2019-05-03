@@ -1,24 +1,16 @@
 from firedrake import *
 
 ai = Constant(1)
-ar = Constant(1)
+ar = Constant(100)
 
-R = 6371220.
-H = Constant(5960.)
-
-base = IcosahedralSphereMesh(radius=R, refinement_level=1)
-nref = 4
+base = UnitSquareMesh(4,4)
+nref = 5
 mh = MeshHierarchy(base, nref)
-for mesh in mh:
-    x = SpatialCoordinate(mesh)
-    mesh.init_cell_orientations(x)    
-
 mesh = mh[-1]
 
-x, y, z = SpatialCoordinate(mesh)
+x, y = SpatialCoordinate(mesh)
 
-outward_normals = CellNormal(mesh)
-perp = lambda u: cross(outward_normals, u)
+perp = lambda u: as_vector([-u[1], u[0]])
 
 
 V1 = FunctionSpace(mesh, "BDM", 2)
@@ -28,11 +20,10 @@ W = MixedFunctionSpace((V1, V1))
 ur, ui = TrialFunctions(W)
 vr, vi = TestFunctions(W)
 
-Omega = Constant(7.292e-5)  # rotation rate
-R = Constant(R)
-f = 2*Omega*z/R  # Coriolis parameter
+f = Constant(10)  # Coriolis parameter
 g = Constant(9.8)  # Gravitational constant
-tau = Constant(60*60)
+tau = Constant(10.)
+H = Constant(10.0)
 
 # (ar -ai)(hr) = tau*H*div(ur)
 # (ai  ar)(hi)   tau*H*div(ui)
@@ -51,7 +42,7 @@ a = (
     tau*g*inner(hi,div(vi))
 )*dx
 
-f1 = exp((x+y+z)/R)*x*y*z/R**3
+f1 = exp(x+y)*x*y
 F = inner(div(vr),f1)*dx
 
 lu_params = {
@@ -90,42 +81,24 @@ mg_params = {"mat_type": "matfree",
              "mg_levels_patch_sub_ksp_type": "preonly",
              "mg_levels_patch_sub_pc_type": "lu"}
 
-patch_params = {"mat_type": "matfree",
-             "snes_type": "ksponly",
-             "ksp_type": "gmres",
-             "ksp_rtol": 1.0e-8,
-             "ksp_atol": 0.0,
-             "ksp_max_it": 1000,
-             "ksp_monitor": None,
-             "ksp_converged_reason": None,
-             "ksp_norm_type": "unpreconditioned",
-             "pc_type": "python",
-             "pc_python_type": "firedrake.PatchPC",
-             "patch_pc_patch_save_operators": True,
-             "patch_pc_patch_partition_of_unity": False,
-             "patch_pc_patch_sub_mat_type": "seqaij",
-             "patch_pc_patch_construct_type": "star",
-             "patch_pc_patch_multiplicative": False,
-             "patch_pc_patch_symmetrise_sweep": False,
-             "patch_pc_patch_construct_dim": 0,
-             "patch_sub_ksp_type": "preonly",
-             "patch_sub_pc_type": "lu"}
-
 w = Function(W)
 
 Prob = LinearVariationalProblem(a, F, w)
 
+
 mg = True
 if mg:
     Solver = LinearVariationalSolver(Prob, solver_parameters=mg_params)
+
     transfer = EmbeddedDGTransfer(W.ufl_element(), use_fortin_interpolation=True)
     Solver.set_transfer_operators(dmhooks.transfer_operators(W,
                                                              prolong=transfer.prolong,
                                                              inject=transfer.inject,
                                                              restrict=transfer.restrict))
 else:
-    Solver = LinearVariationalSolver(Prob, solver_parameters=patch_params)
-    Solver.solve()
+    Solver = LinearVariationalSolver(Prob, solver_parameters=lu_params)
+    
+Solver.solve()
 
 f0 = File('block.pvd')
 ur, ui = w.split()
