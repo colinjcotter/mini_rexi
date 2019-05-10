@@ -1,13 +1,11 @@
 from firedrake import *
 
-ai = Constant(0)
-ar = Constant(1)
-
 R = 6371220.
-H = Constant(5960.)
 
-base = IcosahedralSphereMesh(radius=R, refinement_level=0)
-nref = 4
+nbase = 1
+base = IcosahedralSphereMesh(radius=R, refinement_level=nbase)
+nref = 5 - nbase
+
 mh = MeshHierarchy(base, nref)
 for mesh in mh:
     x = SpatialCoordinate(mesh)
@@ -23,33 +21,13 @@ perp = lambda u: cross(outward_normals, u)
 
 V1 = FunctionSpace(mesh, "BDM", 2)
 V2 = FunctionSpace(mesh, "DG", 1)
-W = MixedFunctionSpace((V1, V1))
 
-ur, ui = TrialFunctions(W)
-vr, vi = TestFunctions(W)
+ur = TrialFunction(V1)
+vr = TestFunction(V1)
 
-Omega = Constant(7.292e-5)  # rotation rate
-R = Constant(R)
-f = 2.0e-12*Omega*z/R  # Coriolis parameter
-g = Constant(9.8)  # Gravitational constant
-tau = Constant(60*60*3)
+gamma = Constant(10.0)
 
-# (ar -ai)(hr) = tau*H*div(ur)
-# (ai  ar)(hi)   tau*H*div(ui)
-# (hr) = tau*H/(ar**2 + ai**2)(ar  ai)(div(ur))
-# (hi)                        (-ai ar)(div(ui))
-
-hr = tau*H/(ar**2 + ai**2)*(ar*div(ur) + ai*div(ui))
-hi = tau*H/(ar**2 + ai**2)*(-ai*div(ur) + ar*div(ui))
-
-a = (
-    inner(ar*ur,vr) - inner(ai*ui, vr)
-    - tau*inner(f*perp(ur),vr) + 
-    tau*g*inner(hr,div(vr)) +
-    inner(ar*ui,vi) + inner(ai*ur, vi)
-    - tau*inner(f*perp(ui),vi) + 
-    tau*g*inner(hi,div(vi))
-)*dx
+a = (gamma*inner(ur, vr) + div(ur)*div(vr))*dx
 
 f1 = exp((x+y+z)/R)*x*y*z/R**3
 F = inner(div(vr),f1)*dx
@@ -104,22 +82,22 @@ patch_params = {"mat_type": "matfree",
              "patch_pc_patch_save_operators": True,
              "patch_pc_patch_partition_of_unity": False,
              "patch_pc_patch_sub_mat_type": "seqaij",
-             "patch_pc_patch_construct_type": "vanka",
+             "patch_pc_patch_construct_type": "star",
              "patch_pc_patch_multiplicative": False,
              "patch_pc_patch_symmetrise_sweep": False,
              "patch_pc_patch_construct_dim": 0,
              "patch_sub_ksp_type": "preonly",
              "patch_sub_pc_type": "lu"}
 
-w = Function(W)
+w = Function(V1)
 
 Prob = LinearVariationalProblem(a, F, w)
 
 mg = True
 if mg:
     Solver = LinearVariationalSolver(Prob, solver_parameters=mg_params)
-    transfer = EmbeddedDGTransfer(W.ufl_element(), use_fortin_interpolation=True)
-    Solver.set_transfer_operators(dmhooks.transfer_operators(W,
+    transfer = EmbeddedDGTransfer(V1.ufl_element(), use_fortin_interpolation=True)
+    Solver.set_transfer_operators(dmhooks.transfer_operators(V1,
                                                              prolong=transfer.prolong,
                                                              inject=transfer.inject,
                                                              restrict=transfer.restrict))
@@ -127,11 +105,6 @@ else:
     Solver = LinearVariationalSolver(Prob, solver_parameters=patch_params)
 Solver.solve()
 
-f0 = File('block.pvd')
-ur, ui = w.split()
-uout = Function(V1)
-uout.assign(ur)
-f0.write(uout)
-uout.assign(ui)
-f0.write(uout)
+f0 = File('hdiv-test.pvd')
+f0.write(w)
 
