@@ -1,6 +1,6 @@
 from firedrake import *
 
-ai = Constant(1)
+ai = Constant(100)
 ar = Constant(1)
 
 R = 6371220.
@@ -125,7 +125,7 @@ if mg:
                                                              restrict=transfer.restrict))
 else:
     Solver = LinearVariationalSolver(Prob, solver_parameters=patch_params)
-    Solver.solve()
+Solver.solve()
 
 f0 = File('block.pvd')
 ur, ui = w.split()
