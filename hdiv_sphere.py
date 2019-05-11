@@ -19,13 +19,13 @@ outward_normals = CellNormal(mesh)
 perp = lambda u: cross(outward_normals, u)
 
 
-V1 = FunctionSpace(mesh, "BDM", 2)
+V1 = FunctionSpace(mesh, "BDM", 1)
 V2 = FunctionSpace(mesh, "DG", 1)
 
 ur = TrialFunction(V1)
 vr = TestFunction(V1)
 
-gamma = Constant(10.0)
+gamma = Constant(1e4)
 
 a = (gamma*inner(ur, vr) + div(ur)*div(vr))*dx
 
@@ -55,7 +55,7 @@ mg_params = {"mat_type": "matfree",
              "mg_coarse_assembled_pc_factor_mat_solver_type": "mumps",
              "mg_levels_ksp_type": "richardson",
              "mg_levels_ksp_max_it": 1,
-             "mg_levels_ksp_richardson_scale": 1,
+             "mg_levels_ksp_richardson_scale": 1/3,
              "mg_levels_pc_type": "python",
              "mg_levels_pc_python_type": "firedrake.PatchPC",
              "mg_levels_patch_pc_patch_save_operators": True,

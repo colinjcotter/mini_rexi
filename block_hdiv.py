@@ -1,13 +1,10 @@
 from firedrake import *
 
-ai = Constant(0)
-ar = Constant(1)
-
 R = 6371220.
 H = Constant(5960.)
 
 base = IcosahedralSphereMesh(radius=R, refinement_level=0)
-nref = 4
+nref = 5
 mh = MeshHierarchy(base, nref)
 for mesh in mh:
     x = SpatialCoordinate(mesh)
@@ -30,9 +27,25 @@ vr, vi = TestFunctions(W)
 
 Omega = Constant(7.292e-5)  # rotation rate
 R = Constant(R)
-f = 2.0e-12*Omega*z/R  # Coriolis parameter
+f = Constant(2.0)*Omega*z/R  # Coriolis parameter
 g = Constant(9.8)  # Gravitational constant
-tau = Constant(60*60*3)
+hour = 60*60
+hours = 12
+tau = Constant(hour*hours)
+
+aval = 0.1 + 30.j
+ai = Constant(imag(aval))
+ar = Constant(real(aval))
+
+bval = aval**2
+#set this to 0.5 for optimal operator, 1 for optimal multigrid
+bpow = 0.5
+bmod = real(bval) + (imag(bval) + (-real(bval))**bpow)*1j
+aPval = bmod**0.5
+
+aiP = Constant(imag(aPval))
+arP = Constant(real(aPval))
+
 
 # (ar -ai)(hr) = tau*H*div(ur)
 # (ai  ar)(hi)   tau*H*div(ui)
@@ -51,11 +64,25 @@ a = (
     tau*g*inner(hi,div(vi))
 )*dx
 
+hrP = tau*H/(arP**2 + aiP**2)*(arP*div(ur) + aiP*div(ui))
+hiP = tau*H/(arP**2 + aiP**2)*(-aiP*div(ur) + arP*div(ui))
+
+aP = (
+    inner(arP*ur,vr) - inner(aiP*ui, vr)
+    - tau*inner(f*perp(ur),vr) + 
+    tau*g*inner(hr,div(vr)) +
+    inner(arP*ui,vi) + inner(aiP*ur, vi)
+    - tau*inner(f*perp(ui),vi) + 
+    tau*g*inner(hi,div(vi))
+)*dx
+
+
 f1 = exp((x+y+z)/R)*x*y*z/R**3
 F = inner(div(vr),f1)*dx
 
 lu_params = {
-    "ksp_type": "preonly",
+    "ksp_monitor": None,
+    "ksp_type": "gmres",
     "pc_type": "lu",
     "mat_type": 'aij'
 }
@@ -77,7 +104,7 @@ mg_params = {"mat_type": "matfree",
              "mg_coarse_assembled_pc_factor_mat_solver_type": "mumps",
              "mg_levels_ksp_type": "richardson",
              "mg_levels_ksp_max_it": 1,
-             "mg_levels_ksp_richardson_scale": 1,
+             "mg_levels_ksp_richardson_scale": 1/3,
              "mg_levels_pc_type": "python",
              "mg_levels_pc_python_type": "firedrake.PatchPC",
              "mg_levels_patch_pc_patch_save_operators": True,
@@ -89,6 +116,59 @@ mg_params = {"mat_type": "matfree",
              "mg_levels_patch_pc_patch_construct_dim": 0,
              "mg_levels_patch_sub_ksp_type": "preonly",
              "mg_levels_patch_sub_pc_type": "lu"}
+
+class Shifted(AuxiliaryOperatorPC):
+
+    def form(self, pc, test, trial):
+
+        ur, ui = split(trial)
+        vr, vi = split(test)
+        
+        hrP = tau*H/(arP**2 + aiP**2)*(arP*div(ur) + aiP*div(ui))
+        hiP = tau*H/(arP**2 + aiP**2)*(-aiP*div(ur) + arP*div(ui))
+        
+        aP = (
+            inner(arP*ur,vr) - inner(aiP*ui, vr)
+            - tau*inner(f*perp(ur),vr) + 
+            tau*g*inner(hr,div(vr)) +
+            inner(arP*ui,vi) + inner(aiP*ur, vi)
+            - tau*inner(f*perp(ui),vi) + 
+            tau*g*inner(hi,div(vi))
+        )*dx
+
+        bcs = None
+        return (aP, bcs)
+
+ap_mg_params = {"mat_type": "matfree",
+                "snes_type": "ksponly",
+                "ksp_type": "gmres",
+                "ksp_rtol": 1.0e-8,
+                "ksp_atol": 0.0,
+                "ksp_max_it": 1000,
+                "ksp_monitor": None,
+                "ksp_converged_reason": None,
+                "ksp_norm_type": "unpreconditioned",
+                "pc_type": "mg",
+                "mg_coarse_ksp_type": "preonly",
+                "mg_coarse_pc_type": "python",
+                "mg_coarse_pc_python_type": "firedrake.AssembledPC",
+                "mg_coarse_assembled_pc_type": "lu",
+                "mg_coarse_assembled_pc_factor_mat_solver_type": "mumps",
+                "mg_levels_ksp_type": "richardson",
+                "mg_levels_ksp_max_it": 1,
+                "mg_levels_ksp_richardson_scale": 1/3,
+                "mg_levels_pc_type": "python",
+                "mg_levels_pc_python_type": "__main__.Shifted",
+                "mg_levels_aux_pc_type": "firedrake.PatchPC",
+                "mg_levels_aux_patch_pc_patch_save_operators": True,
+                "mg_levels_aux_patch_pc_patch_partition_of_unity": False,
+                "mg_levels_aux_patch_pc_patch_sub_mat_type": "seqaij",
+                "mg_levels_aux_patch_pc_patch_construct_type": "star",
+                "mg_levels_aux_patch_pc_patch_multiplicative": False,
+                "mg_levels_aux_patch_pc_patch_symmetrise_sweep": False,
+                "mg_levels_aux_patch_pc_patch_construct_dim": 0,
+                "mg_levels_aux_patch_sub_ksp_type": "preonly",
+                "mg_levels_aux_patch_sub_pc_type": "lu"}
 
 patch_params = {"mat_type": "matfree",
              "snes_type": "ksponly",
@@ -113,18 +193,20 @@ patch_params = {"mat_type": "matfree",
 
 w = Function(W)
 
-Prob = LinearVariationalProblem(a, F, w)
-
 mg = True
 if mg:
-    Solver = LinearVariationalSolver(Prob, solver_parameters=mg_params)
-    transfer = EmbeddedDGTransfer(W.ufl_element(), use_fortin_interpolation=True)
+    Prob = LinearVariationalProblem(a, F, w)
+    Solver = LinearVariationalSolver(Prob,
+                                     solver_parameters=mg_params)
+    transfer = EmbeddedDGTransfer(W.ufl_element(),
+                                  use_fortin_interpolation=True)
     Solver.set_transfer_operators(dmhooks.transfer_operators(W,
                                                              prolong=transfer.prolong,
                                                              inject=transfer.inject,
                                                              restrict=transfer.restrict))
 else:
-    Solver = LinearVariationalSolver(Prob, solver_parameters=patch_params)
+    Prob = LinearVariationalProblem(a, F, w, aP=aP)
+    Solver = LinearVariationalSolver(Prob, solver_parameters=lu_params)
 Solver.solve()
 
 f0 = File('block.pvd')
