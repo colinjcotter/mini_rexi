@@ -33,13 +33,13 @@ hour = 60*60
 hours = 12
 tau = Constant(hour*hours)
 
-aval = 0.1 + 30.j
+aval = 0.1 + 3.j
 ai = Constant(imag(aval))
 ar = Constant(real(aval))
 
 bval = aval**2
 #set this to 0.5 for optimal operator, 1 for optimal multigrid
-bpow = 0.5
+bpow = 1
 bmod = real(bval) + (imag(bval) + (-real(bval))**bpow)*1j
 aPval = bmod**0.5
 
@@ -123,19 +123,23 @@ class Shifted(AuxiliaryOperatorPC):
 
         ur, ui = split(trial)
         vr, vi = split(test)
-        
-        hrP = tau*H/(arP**2 + aiP**2)*(arP*div(ur) + aiP*div(ui))
-        hiP = tau*H/(arP**2 + aiP**2)*(-aiP*div(ur) + arP*div(ui))
+
+        hr = tau*H/(arP**2 + aiP**2)*(arP*div(ur) + aiP*div(ui))
+        hi = tau*H/(arP**2 + aiP**2)*(-aiP*div(ur) + arP*div(ui))
+
+        #need to redefine perp as we are on a different mesh
+        mesh = trial.function_space().mesh()
+        outward_normals = CellNormal(mesh)
+        perp = lambda u: cross(outward_normals, u)
         
         aP = (
             inner(arP*ur,vr) - inner(aiP*ui, vr)
-            - tau*inner(f*perp(ur),vr) + 
-            tau*g*inner(hr,div(vr)) +
-            inner(arP*ui,vi) + inner(aiP*ur, vi)
-            - tau*inner(f*perp(ui),vi) + 
-            tau*g*inner(hi,div(vi))
+            - tau*inner(f*perp(ur),vr)
+            + tau*g*inner(hr,div(vr)) 
+            + inner(arP*ui,vi) + inner(aiP*ur, vi)
+            - tau*inner(f*perp(ui),vi) 
+            +  tau*g*inner(hi,div(vi))
         )*dx
-
         bcs = None
         return (aP, bcs)
 
@@ -159,7 +163,8 @@ ap_mg_params = {"mat_type": "matfree",
                 "mg_levels_ksp_richardson_scale": 1/3,
                 "mg_levels_pc_type": "python",
                 "mg_levels_pc_python_type": "__main__.Shifted",
-                "mg_levels_aux_pc_type": "firedrake.PatchPC",
+                "mg_levels_aux_pc_type": "python",
+                "mg_levels_aux_pc_python_type": "firedrake.PatchPC",
                 "mg_levels_aux_patch_pc_patch_save_operators": True,
                 "mg_levels_aux_patch_pc_patch_partition_of_unity": False,
                 "mg_levels_aux_patch_pc_patch_sub_mat_type": "seqaij",
@@ -197,7 +202,7 @@ mg = True
 if mg:
     Prob = LinearVariationalProblem(a, F, w)
     Solver = LinearVariationalSolver(Prob,
-                                     solver_parameters=mg_params)
+                                     solver_parameters=ap_mg_params)
     transfer = EmbeddedDGTransfer(W.ufl_element(),
                                   use_fortin_interpolation=True)
     Solver.set_transfer_operators(dmhooks.transfer_operators(W,
